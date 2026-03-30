@@ -1,20 +1,32 @@
 # Basecamp Agent
 
-A Claude Code plugin for managing Basecamp 3 projects, todos, messages, and campfires — across multiple accounts and clients.
+A Claude Code skill for managing Basecamp 3 projects, todos, messages, and campfires — across multiple accounts and clients.
 
 ## Installation
 
+Clone the repo and copy the skill files into your project's `.claude/` directory:
+
+```bash
+git clone https://github.com/CatMizu/basecamp-agent.git /tmp/basecamp-agent
+
+# Copy skills and scripts
+cp -r /tmp/basecamp-agent/skills/* YOUR_PROJECT/.claude/skills/
+cp -r /tmp/basecamp-agent/scripts YOUR_PROJECT/.claude/skills/
+
+# Copy CLAUDE.md (merge with existing if needed)
+cp /tmp/basecamp-agent/CLAUDE.md YOUR_PROJECT/CLAUDE.md
 ```
-/plugin marketplace add CatMizu/basecamp-agent
-/plugin install basecamp-agent
-```
+
+Then **restart Claude Code** for the skills to be loaded.
+
+> **Note:** Claude Code loads skills from `.claude/skills/` — there is no plugin marketplace or `settings.json` plugin config. Skills are simply directories containing `SKILL.md` files placed under `.claude/skills/`.
 
 ## Setup
 
 After installing, run the init skill to configure your Basecamp account(s):
 
 ```
-/basecamp-agent:basecamp-init
+/basecamp-init
 ```
 
 This will guide you through:
@@ -28,7 +40,7 @@ Your credentials are stored locally at `~/.basecamp/` and never uploaded.
 
 ### Manage projects and tasks
 ```
-/basecamp-agent:basecamp
+/basecamp
 ```
 
 Ask things like:
@@ -40,7 +52,23 @@ Ask things like:
 
 ### Fix authentication issues
 ```
-/basecamp-agent:basecamp-auth
+/basecamp-auth
+```
+
+## Project Structure
+
+```
+.
+├── CLAUDE.md              # Instructions loaded into Claude's context
+├── skills/
+│   ├── basecamp/          # Main skill: CRUD for projects, todos, messages, campfire
+│   │   ├── SKILL.md
+│   │   └── api-reference.md
+│   ├── basecamp-init/     # First-time OAuth setup
+│   │   └── SKILL.md
+│   └── basecamp-auth/     # Token refresh & auth troubleshooting
+│       └── SKILL.md
+└── scripts/               # Helper shell scripts (token refresh, etc.)
 ```
 
 ## Features
