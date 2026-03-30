@@ -11,7 +11,7 @@ This is a Basecamp 3 management agent. Users interact with Basecamp through cust
 ## Important Rules
 
 - **Never expose tokens or secrets** in output — access_token, refresh_token, client_secret must never be shown to the user
-- **User config lives in `.credentials/`** (project root) — this directory is gitignored, never commit it
+- **User config lives in `~/.basecamp/`** — credentials are stored globally, never expose them
 - **Always use refresh-token.sh** before API calls to ensure valid tokens
 - **Rate limit**: Basecamp allows 50 requests per 10 seconds. If you get a 429 response, wait for the `Retry-After` header value
 - **Pagination**: Follow `Link` header `rel="next"` URLs. Never construct pagination URLs manually

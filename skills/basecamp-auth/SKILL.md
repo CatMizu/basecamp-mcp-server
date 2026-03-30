@@ -11,13 +11,13 @@ Help the user fix Basecamp authentication issues.
 
 ## Diagnose
 
-1. Check if `.credentials/config.json` exists — if not, tell user to run `/basecamp-init`
-2. List all accounts in `.credentials/accounts/`
+1. Check if `~/.basecamp/config.json` exists — if not, tell user to run `/basecamp-init`
+2. List all accounts in `~/.basecamp/accounts/`
 3. For each account, check token status:
 
 ```bash
 # Check if token is expired
-EXPIRES_AT=$(jq -r '.expires_at' .credentials/accounts/{id}.json)
+EXPIRES_AT=$(jq -r '.expires_at' ~/.basecamp/accounts/{id}.json)
 CURRENT=$(date +%s)
 if [ "$CURRENT" -gt "$EXPIRES_AT" ]; then echo "EXPIRED"; else echo "VALID"; fi
 ```
@@ -31,8 +31,8 @@ if [ "$CURRENT" -gt "$EXPIRES_AT" ]; then echo "EXPIRED"; else echo "VALID"; fi
 If refresh fails (refresh token also expired or revoked), the user needs to re-authenticate:
 
 ```bash
-CLIENT_ID=$(jq -r '.client_id' .credentials/config.json)
-CLIENT_SECRET=$(jq -r '.client_secret' .credentials/config.json)
+CLIENT_ID=$(jq -r '.client_id' ~/.basecamp/config.json)
+CLIENT_SECRET=$(jq -r '.client_secret' ~/.basecamp/config.json)
 ./scripts/oauth-login.sh "$CLIENT_ID" "$CLIENT_SECRET"
 ```
 
@@ -43,7 +43,7 @@ Then update the account file with the new tokens.
 Test if a token actually works:
 
 ```bash
-TOKEN=$(jq -r '.access_token' .credentials/accounts/{id}.json)
+TOKEN=$(jq -r '.access_token' ~/.basecamp/accounts/{id}.json)
 curl -s -H "Authorization: Bearer $TOKEN" \
   -H "User-Agent: BasecampAgent (support@example.com)" \
   "https://launchpad.37signals.com/authorization.json"

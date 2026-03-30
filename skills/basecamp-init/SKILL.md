@@ -12,7 +12,7 @@ Help the user set up their Basecamp 3 configuration. This is a one-time setup pr
 
 ## Step 1: Check existing config
 
-Check if `.credentials/config.json` exists (relative to project root).
+Check if `~/.basecamp/config.json` exists.
 
 - If it exists and the user ran `/basecamp-init add-account`, skip to Step 3.
 - If it exists and no argument, ask if they want to reconfigure or add an account.
@@ -36,10 +36,10 @@ Ask the user for their Client ID and Client Secret using AskUserQuestion.
 Then create the config:
 
 ```bash
-mkdir -p .credentials/accounts
+mkdir -p ~/.basecamp/accounts
 ```
 
-Write `.credentials/config.json`:
+Write `~/.basecamp/config.json`:
 ```json
 {
   "client_id": "<user's client_id>",
@@ -83,7 +83,7 @@ Show the user all their Basecamp 3 accounts (filter where `product == "bc3"`) an
 
 ## Step 5: Save Account Configs
 
-For each selected account, write `.credentials/accounts/{account_id}.json`:
+For each selected account, write `~/.basecamp/accounts/{account_id}.json`:
 
 ```json
 {

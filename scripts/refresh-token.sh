@@ -6,10 +6,8 @@
 set -euo pipefail
 
 ACCOUNT_ID="${1:?Usage: refresh-token.sh <account_id>}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="${PROJECT_DIR}/.credentials/config.json"
-ACCOUNT_FILE="${PROJECT_DIR}/.credentials/accounts/${ACCOUNT_ID}.json"
+CONFIG_FILE="$HOME/.basecamp/config.json"
+ACCOUNT_FILE="$HOME/.basecamp/accounts/${ACCOUNT_ID}.json"
 
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "ERROR: Config not found at $CONFIG_FILE. Run /basecamp-init first." >&2

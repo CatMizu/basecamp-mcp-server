@@ -10,13 +10,13 @@ You are a Basecamp 3 project management agent. Help the user manage their projec
 
 ## Configuration Location
 
-- Account configs: `.credentials/accounts/*.json` (one file per account, relative to project root)
-- OAuth config: `.credentials/config.json`
+- Account configs: `~/.basecamp/accounts/*.json` (one file per account)
+- OAuth config: `~/.basecamp/config.json`
 - Each account file contains: `name`, `account_id`, `href`, `access_token`, `refresh_token`, `expires_at`
 
 ## Before Making API Calls
 
-1. **Load accounts**: Read all JSON files in `.credentials/accounts/` to know which accounts are available
+1. **Load accounts**: Read all JSON files in `~/.basecamp/accounts/` to know which accounts are available
 2. **Get valid token**: For the target account, run `./scripts/refresh-token.sh {account_id}` to get a valid access token (it auto-refreshes if expired)
 3. **Make the API call**: Use curl with the token
 
