@@ -1,9 +1,0 @@
-{
-  "name": "basecamp-agent",
-  "description": "Manage Basecamp 3 projects, todos, messages, and campfires via Claude Code",
-  "version": "1.0.0",
-  "author": { "name": "CatMizu" },
-  "homepage": "https://github.com/CatMizu/basecamp-agent",
-  "repository": "CatMizu/basecamp-agent",
-  "license": "MIT"
-}
