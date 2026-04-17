@@ -112,9 +112,14 @@ Error handling:
     async (params, extra) => {
       try {
         const ctx = getBasecampCtx(extra.authInfo?.extra);
+        // Basecamp 3 uses different paths per status, not a query param.
+        const path =
+          params.status === 'active'
+            ? '/projects.json'
+            : `/projects/${params.status}.json`;
         const page = await bcFetchOffsetLimit<BasecampProject>(
           ctx,
-          `/projects.json?status=${params.status}`,
+          path,
           params.limit,
           params.offset,
         );
@@ -387,7 +392,9 @@ Examples:
     async (params, extra) => {
       try {
         const ctx = getBasecampCtx(extra.authInfo?.extra);
-        const path = `/buckets/${params.project_id}/todolists/${params.todolist_id}/todos.json?status=${params.status}`;
+        // Basecamp default is incomplete todos; ?completed=true returns completed.
+        const query = params.status === 'completed' ? '?completed=true' : '';
+        const path = `/buckets/${params.project_id}/todolists/${params.todolist_id}/todos.json${query}`;
         const page = await bcFetchOffsetLimit<BasecampTodo>(
           ctx,
           path,
