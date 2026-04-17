@@ -133,6 +133,11 @@ export async function bcFetchPage<T>(
     throw new BasecampNotFoundError();
   }
   if (res.status < 200 || res.status >= 300) {
+    logger.warning('Basecamp API error', {
+      url,
+      status: String(res.status),
+      bodySnippet: sanitize(res.text).substring(0, 200),
+    });
     throw new BasecampApiError(res.status, sanitize(res.text));
   }
 
