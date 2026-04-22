@@ -23,10 +23,15 @@ function escape(s: string): string {
 
 function dueChip(dueOn: string | null): string {
   if (!dueOn) return '';
-  const today = new Date();
-  const due = new Date(dueOn + 'T00:00:00Z');
+  // Compare calendar dates in local time: snap `today` to local midnight and
+  // parse the due-date string as local midnight (no `Z` → no UTC coercion).
+  // Using UTC on one side and wall-clock `new Date()` on the other would make
+  // today's items show "Overdue" for users west of UTC all business day.
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const due = new Date(dueOn + 'T00:00:00');
   const msDay = 24 * 60 * 60 * 1000;
-  const diff = Math.floor((due.getTime() - today.getTime()) / msDay);
+  const diff = Math.round((due.getTime() - todayMidnight.getTime()) / msDay);
   let cls = 'chip chip-due';
   let label = dueOn;
   if (diff < 0) {
@@ -42,6 +47,12 @@ function dueChip(dueOn: string | null): string {
   return `<span class="${cls}">${escape(label)}</span>`;
 }
 
+function safeHref(url: string): string {
+  // Only pass http(s) through; otherwise render a neutered # link. Basecamp's
+  // API returns https URLs today, but don't trust that at the render boundary.
+  return /^https?:/i.test(url) ? escape(url) : '#';
+}
+
 function renderTodo(t: NormalizedTodo): string {
   const priorityStar = t.priority ? '<span class="star" title="Priority">★</span>' : '';
   const due = dueChip(t.dueOn);
@@ -54,7 +65,7 @@ function renderTodo(t: NormalizedTodo): string {
       <input type="checkbox" data-todo-id="${t.id}" data-project-id="${t.projectId}"
         ${t.completed ? 'checked disabled' : ''} aria-label="Complete ${escape(t.content)}" />
       ${priorityStar}
-      <a class="todo-content" href="${escape(t.appUrl)}" target="_blank" rel="noreferrer">
+      <a class="todo-content" href="${safeHref(t.appUrl)}" target="_blank" rel="noreferrer">
         ${escape(t.content)}
       </a>
       <span class="todo-meta">${due}${comments}</span>
