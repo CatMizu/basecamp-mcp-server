@@ -65,21 +65,24 @@ const callbacks: RenderCallbacks = {
   },
 };
 
+function isMyPlatePayload(
+  sc: unknown,
+): sc is MyPlatePayload | MyPlateErrorPayload {
+  if (sc === null || typeof sc !== 'object') return false;
+  // MyPlateErrorPayload shape.
+  if ('error' in sc && 'scope' in sc) return true;
+  // MyPlatePayload shape — both collections must be present as arrays.
+  const p = sc as Partial<MyPlatePayload>;
+  return Array.isArray(p.priorities) && Array.isArray(p.groups) && typeof p.scope === 'string';
+}
+
 app.ontoolresult = (result) => {
-  const sc = (result as { structuredContent?: MyPlatePayload | MyPlateErrorPayload })
-    .structuredContent;
-  if (!sc) {
-    render(
-      root,
-      {
-        scope: lastScope,
-        error: { message: 'Server returned no structured content.' },
-        fetchedAt: new Date().toISOString(),
-      },
-      callbacks,
-    );
-    return;
-  }
+  const sc = (result as { structuredContent?: unknown }).structuredContent;
+  // Ignore notifications whose structuredContent doesn't match our payload
+  // shape — they're from other tools the host routed through this view (e.g.
+  // a basecamp_complete_todo response). Dropping them here prevents wiping
+  // the plate after every checkbox click.
+  if (!isMyPlatePayload(sc)) return;
   lastScope = sc.scope;
   render(root, sc, callbacks);
 };
