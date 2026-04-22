@@ -16,7 +16,7 @@
     "dev-reset-db": "tsx scripts/dev-reset-db.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.24.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
