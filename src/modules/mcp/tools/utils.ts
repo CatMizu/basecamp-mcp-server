@@ -338,11 +338,11 @@ export function myPlateSummary(p: MyPlatePayload): string {
   }, ${pri} priorit${pri === 1 ? 'y' : 'ies'}${filteredNote}.`;
 }
 
-/** Map a thrown error into MyPlateErrorPayload wrapped in a CallToolResult. */
+/** Map a thrown error into a CallToolResult carrying a MyPlateErrorPayload. */
 export function toMyPlateError(
   err: unknown,
   scope: MyPlateScope,
-): { result: CallToolResult } {
+): CallToolResult {
   let message = 'Unknown error';
   let retryAfterSec: number | undefined;
   if (err instanceof BasecampRateLimitError) {
@@ -363,10 +363,8 @@ export function toMyPlateError(
     fetchedAt: new Date().toISOString(),
   };
   return {
-    result: {
-      isError: true,
-      content: [{ type: 'text' as const, text: message }],
-      structuredContent: payload as unknown as Record<string, unknown>,
-    },
+    isError: true,
+    content: [{ type: 'text' as const, text: message }],
+    structuredContent: payload as unknown as Record<string, unknown>,
   };
 }

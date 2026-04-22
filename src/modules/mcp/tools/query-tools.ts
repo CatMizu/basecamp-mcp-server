@@ -21,13 +21,6 @@ import type { BasecampContext } from './auth-context.js';
 import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
-  normalizeMyPlate,
-  myPlateSummary,
-  toMyPlateError,
-} from './utils.js';
-
-const MY_PLATE_RESOURCE_URI = 'ui://basecamp/my-plate';
-import {
   buildResult,
   findDock,
   formatCampfireLine,
@@ -39,10 +32,15 @@ import {
   formatProjectSummary,
   formatTodo,
   formatTodolist,
+  myPlateSummary,
+  normalizeMyPlate,
   paginate,
   plainText,
+  toMyPlateError,
   toolError,
 } from './utils.js';
+
+const MY_PLATE_RESOURCE_URI = 'ui://basecamp/my-plate';
 
 const paginationSchema = {
   limit: z
@@ -89,7 +87,7 @@ export async function handleMyPlate(
       structuredContent: payload as unknown as Record<string, unknown>,
     };
   } catch (err) {
-    return toMyPlateError(err, scope).result;
+    return toMyPlateError(err, scope);
   }
 }
 
