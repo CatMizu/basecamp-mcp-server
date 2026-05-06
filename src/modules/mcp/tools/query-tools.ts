@@ -253,12 +253,17 @@ Args:
   - response_format ('markdown'|'json', default 'markdown').
 
 Returns:
-  For JSON: { count, items: [{ id, name, email_address, title, admin, client }] }.
+  For JSON: { count, items: [{ id, name, email_address, attachable_sgid, title, admin, client }] }.
   For markdown: bullet list with admin/client tags where relevant.
+
+  \`attachable_sgid\` is used to @mention a person in rich-text HTML. To mention someone:
+    <bc-attachment sgid="THEIR_ATTACHABLE_SGID" content-type="application/vnd.basecamp.mention"></bc-attachment>
+  This tag can appear anywhere in the HTML content for basecamp_post_campfire_message or basecamp_post_message.
 
 Examples:
   - Use when: "Who's on this project?" — project_id=<id>.
-  - Use when: you need a user id to assign to a new todo.`,
+  - Use when: you need a user id to assign to a new todo.
+  - Use when: you need to @mention someone in a campfire or message.`,
       inputSchema: z
         .object({
           project_id: z.number().int().positive(),
@@ -287,6 +292,7 @@ Examples:
           id: p.id,
           name: p.name,
           email_address: p.email_address,
+          attachable_sgid: p.attachable_sgid ?? null,
           title: p.title ?? null,
           admin: !!p.admin,
           client: !!p.client,

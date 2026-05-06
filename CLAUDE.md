@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # basecamp-mcp-server
 
 Remote MCP server for Basecamp 3. TypeScript + Express, SQLite token vault
@@ -10,6 +14,33 @@ on a Fly.io volume, Streamable HTTP transport, 14 tools.
   /.well-known/*)
 - `better-sqlite3` with WAL, forward-only migrations in `migrations/*.sql`
 - Jest with ts-jest (ESM) — tests live next to source as `*.test.ts`
+
+## Commands
+
+```bash
+nvm use                 # Node 22 (reads .nvmrc)
+npm install
+npm run dev-reset-db    # drops and re-migrates vault.db — required on first run
+npm run dev             # tsx watch on src/, listens on :3232 (needs .env)
+
+npm run build           # tsc + copy src/static → dist/static
+npm start               # runs dist/index.js
+
+npm test                # Jest (ESM via NODE_OPTIONS=--experimental-vm-modules)
+npm test -- path/to/file.test.ts       # single file
+npm test -- -t "substring of test name" # single test by name
+
+npm run typecheck       # tsc --noEmit
+npm run lint            # eslint src/
+```
+
+Smoke-test `/mcp` without walking the OAuth flow: `npm run build && npx tsx
+scripts/seed-test-install.ts && node dist/index.js` then POST to `/mcp` with
+`Authorization: Bearer test-token` (see README "Smoke test").
+
+Local dev needs a public tunnel (e.g. `ngrok http 3232`) for a remote MCP
+client to reach you; set `BASE_URI` to the tunnel URL and register the same
+URL + `/oauth/basecamp/callback` as the Basecamp OAuth app's redirect URI.
 
 ## Architecture
 
@@ -43,6 +74,9 @@ Three modules, one process:
   have to remember.
 - **Project dock pattern**: GET `/projects/{id}.json` first to discover
   todoset_id / message_board_id before hitting feature endpoints.
+- **Response cap**: tool responses are truncated at 25,000 chars
+  (`CHARACTER_LIMIT` in `src/constants.ts`). List tools paginate via
+  `limit` / `offset`.
 
 ## SQLite invariants
 
@@ -53,6 +87,9 @@ Three modules, one process:
   `ON UPDATE CASCADE` because `exchangeRefreshToken` rotates the PK.
 - All sqlite-store functions accept an optional `db` parameter for test
   isolation; tests use `createTestDb()` + `setDbForTesting()`.
+- Migrations are forward-only in `migrations/*.sql`, applied by the DB
+  singleton on startup. Add a new numbered file rather than editing
+  existing ones.
 
 ## Testing
 
@@ -67,3 +104,9 @@ Three modules, one process:
 PR from the feature branch. Group related changes into reviewable chunks
 (one PR = one coherent change, or a small sequence of commits like
 scaffold → feature → tests).
+
+## Deploy
+
+Fly.io, single machine, SQLite on mounted volume. `fly.toml` is gitignored
+(the prod hostname isn't public); `fly.example.toml` is the template.
+See README "Production deploy" for the `fly secrets set` incantation.

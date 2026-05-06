@@ -8,6 +8,7 @@ export interface BasecampPerson {
   id: number;
   name: string;
   email_address: string;
+  attachable_sgid?: string;
   title?: string | null;
   bio?: string | null;
   admin?: boolean;

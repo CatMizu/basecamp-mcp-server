@@ -176,6 +176,9 @@ Error handling:
 The content body is treated as HTML. Allowed tags: div, h1, br, strong, em,
 strike, a (with href), pre, ol, ul, li, blockquote.
 
+**@mentions:** To mention a person, get their \`attachable_sgid\` from basecamp_list_project_people, then insert:
+  <bc-attachment sgid="THEIR_SGID" content-type="application/vnd.basecamp.mention"></bc-attachment>
+
 Args:
   - project_id (number, required).
   - subject (string, required).
@@ -254,6 +257,11 @@ Examples:
 **Important:** Basecamp requires \`content_type: "text/html"\` for rich
 messages — this tool injects it automatically so your newlines render
 correctly. Include HTML (\`<br>\`, \`<strong>\`, etc.) in content for formatting.
+
+**@mentions:** To mention a person, get their \`attachable_sgid\` from basecamp_list_project_people, then insert:
+  <bc-attachment sgid="THEIR_SGID" content-type="application/vnd.basecamp.mention"></bc-attachment>
+
+**Threading:** Basecamp campfire does not support threaded replies via the API.
 
 Args:
   - project_id (number, required).
