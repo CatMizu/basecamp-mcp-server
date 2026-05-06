@@ -291,3 +291,63 @@ export interface DashboardErrorPayload {
   error: { message: string; retryAfterSec?: number };
   generatedAt: string;
 }
+
+export interface BasecampVault {
+  id: number;
+  status: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  documents_count: number;
+  uploads_count: number;
+  url: string;
+  app_url: string;
+  parent: { id: number; title: string; url: string; app_url: string; type: string } | null;
+  bucket: { id: number; name: string; type: string };
+}
+
+export interface BasecampDocument {
+  id: number;
+  status: string;
+  title: string;
+  content: string; // HTML
+  created_at: string;
+  updated_at: string;
+  creator: { id: number; name: string };
+  url: string;
+  app_url: string;
+  parent: { id: number; title: string; url: string; app_url: string; type: string };
+  bucket: { id: number; name: string; type: string };
+}
+
+export interface BasecampUpload {
+  id: number;
+  status: string;
+  title: string;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  download_url: string;
+  url: string;
+  app_url: string;
+  created_at: string;
+  updated_at: string;
+  creator: { id: number; name: string };
+  parent: { id: number; title: string; url: string; app_url: string; type: string };
+  bucket: { id: number; name: string; type: string };
+}
+
+export interface BasecampSearchResult {
+  id: number;
+  type: string; // "Document"|"Upload"|"CloudFile"|"GoogleDocument"|"Vault"|...
+  status: string;
+  title: string;
+  content_excerpt: string | null;
+  url: string | null;   // external link for CloudFile/GoogleDocument
+  app_url: string;
+  created_at: string;
+  updated_at: string;
+  creator: { id: number; name: string } | null;
+  parent: { id: number; title: string; type: string } | null;
+  bucket: { id: number; name: string; type: string };
+}
