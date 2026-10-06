@@ -70,60 +70,14 @@ export async function handlePostMessage(
       body: {
         subject: params.subject,
         content: params.content + attachmentHtml(uploads),
-        status: params.status,
+        // Basecamp rejects status "draft"; omitting status creates a draft.
+        ...(params.status === 'active' ? { status: 'active' } : {}),
       },
     });
     store.markUsed(uploads.map((u) => u.id));
     const struct = { id: m.id, subject: m.subject, app_url: m.app_url };
     return buildResult(
       `Posted message #${m.id}: **${m.subject}**\n${m.app_url}`,
-      struct,
-      params.response_format,
-    );
-  } catch (err) {
-    return toolError(err);
-  }
-}
-
-export async function handlePostCampfireMessage(
-  params: {
-    project_id: number;
-    campfire_id: number;
-    content?: string;
-    attachments?: string[];
-    response_format: ResponseFormat;
-  },
-  ctx: BasecampContext,
-  store: UploadStore = uploadStore,
-): Promise<CallToolResult> {
-  try {
-    if (!params.content && !params.attachments?.length) {
-      return toolError(new Error('Provide content, attachments, or both.'));
-    }
-    // Resolve before any Basecamp call so a bad upload_id posts nothing.
-    const uploads = params.attachments
-      ? resolveAttachments(params.attachments, ctx, store)
-      : [];
-    const line = await bcFetch<BasecampChatLine>(
-      ctx,
-      `/buckets/${params.project_id}/chats/${params.campfire_id}/lines.json`,
-      {
-        method: 'POST',
-        body: {
-          content: (params.content ?? '') + attachmentHtml(uploads),
-          content_type: 'text/html', // load-bearing — see SKILL docs
-        },
-      },
-    );
-    store.markUsed(uploads.map((u) => u.id));
-    const struct = {
-      id: line.id,
-      content: line.content,
-      created_at: line.created_at,
-      app_url: line.app_url,
-    };
-    return buildResult(
-      `Sent campfire line #${line.id}.\n${line.app_url}`,
       struct,
       params.response_format,
     );
@@ -354,8 +308,7 @@ correctly. Include HTML (\`<br>\`, \`<strong>\`, etc.) in content for formatting
 Args:
   - project_id (number, required).
   - campfire_id (number, required) — from basecamp_list_campfires.
-  - content (string, optional) — HTML body. Required unless attachments is given.
-  - attachments (array<string>, optional, 1-10) — upload_ids from basecamp_create_upload_url; each file is appended to the message. One-time use.
+  - content (string, required) — HTML body.
   - response_format ('markdown'|'json').
 
 Returns:
@@ -363,14 +316,14 @@ Returns:
 
 Examples:
   - Use when: "Post 'Standup in 5' to the engineering campfire."
-  - Use when: "Send this screenshot to the campfire" — upload it with basecamp_create_upload_url first, then pass attachments.
+
+To send a file into a campfire, use basecamp_create_upload_url with project_id + campfire_id instead (chat lines cannot carry attachments).
 `,
       inputSchema: z
         .object({
           project_id: z.number().int().positive(),
           campfire_id: z.number().int().positive(),
-          content: z.string().min(1).optional(),
-          ...attachmentsParam,
+          content: z.string().min(1),
           ...formatParam,
         })
         .strict().shape,
@@ -390,7 +343,28 @@ Examples:
     async (params, extra) => {
       try {
         const ctx = getBasecampCtx(extra.authInfo?.extra);
-        return handlePostCampfireMessage(params, ctx);
+        const line = await bcFetch<BasecampChatLine>(
+          ctx,
+          `/buckets/${params.project_id}/chats/${params.campfire_id}/lines.json`,
+          {
+            method: 'POST',
+            body: {
+              content: params.content,
+              content_type: 'text/html', // load-bearing — see SKILL docs
+            },
+          },
+        );
+        const struct = {
+          id: line.id,
+          content: line.content,
+          created_at: line.created_at,
+          app_url: line.app_url,
+        };
+        return buildResult(
+          `Sent campfire line #${line.id}.\n${line.app_url}`,
+          struct,
+          params.response_format,
+        );
       } catch (err) {
         return toolError(err);
       }

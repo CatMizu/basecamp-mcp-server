@@ -22,6 +22,12 @@ export interface UploadOwner {
   flowId: string;
 }
 
+/** Campfire to post the file into directly (chat lines can't carry attachments). */
+export interface CampfireTarget {
+  projectId: number;
+  campfireId: number;
+}
+
 export interface UploadTicket {
   /** Public short id, safe to show to the model. */
   id: string;
@@ -30,6 +36,8 @@ export interface UploadTicket {
   owner: UploadOwner;
   filename: string;
   contentType: string;
+  /** When set, PUT posts the file into this campfire instead of /attachments.json. */
+  campfire?: CampfireTarget;
   state: UploadState;
   sgid?: string;
   byteSize?: number;
@@ -63,7 +71,12 @@ export class UploadStore {
 
   constructor(private now: () => number = Date.now) {}
 
-  create(owner: UploadOwner, filename: string, contentType: string): UploadTicket {
+  create(
+    owner: UploadOwner,
+    filename: string,
+    contentType: string,
+    campfire?: CampfireTarget,
+  ): UploadTicket {
     this.gc();
     if (this.byId.size >= MAX_TICKETS) {
       throw new Error('Too many uploads in progress. Try again in a few minutes.');
@@ -75,6 +88,7 @@ export class UploadStore {
       owner: { ...owner },
       filename,
       contentType,
+      ...(campfire ? { campfire: { ...campfire } } : {}),
       state: 'pending',
       createdAt,
       expiresAt: createdAt + PENDING_TTL_MS,

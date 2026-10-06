@@ -5,7 +5,7 @@ import {
   handleCreateVaultUpload,
   inferContentType,
 } from './upload-tools.js';
-import { handlePostCampfireMessage, handlePostMessage } from './action-tools.js';
+import { handlePostMessage } from './action-tools.js';
 import { ResponseFormat } from '../../../constants.js';
 import { MAX_UPLOAD_BYTES, UploadStore } from '../uploads/store.js';
 
@@ -43,14 +43,6 @@ function uploaded(store: UploadStore, sgid = 'SGID-AAA', filename = 'a.png') {
   store.markUploaded(t, sgid, 10);
   return t;
 }
-
-const CHAT_LINE = {
-  id: 77,
-  content: 'hi',
-  created_at: '2026-10-06T00:00:00Z',
-  app_url: 'https://3.basecamp.com/9999/buckets/42/chats/5@77',
-  creator: { id: 1, name: 'Me' },
-};
 
 describe('upload-tools', () => {
   let fetchMock: jest.MockedFunction<typeof fetch>;
@@ -119,6 +111,46 @@ describe('upload-tools', () => {
     expect(text).toContain('no ~');
   });
 
+  test('handleCreateUploadUrl stores a campfire target and says the file posts on upload', async () => {
+    const result = await handleCreateUploadUrl(
+      { filename: 'a.png', project_id: 42, campfire_id: 5, response_format: ResponseFormat.MARKDOWN },
+      makeCtx(),
+      store,
+      'https://mcp.example.com',
+    );
+    expect(result.isError).toBeFalsy();
+    const id = /upload_id: (up_[0-9a-f]+)/.exec(textOf(result))![1];
+    expect(store.getById(id)?.campfire).toEqual({ projectId: 42, campfireId: 5 });
+    expect(textOf(result)).toContain('basecamp_post_campfire_message BEFORE running curl');
+    expect(textOf(result)).not.toContain('attachments');
+  });
+
+  test('handleCreateUploadUrl without a target stores none', async () => {
+    const result = await handleCreateUploadUrl(
+      { filename: 'a.png', response_format: ResponseFormat.JSON },
+      makeCtx(),
+      store,
+      'https://mcp.example.com',
+    );
+    const s = result.structuredContent as Record<string, string>;
+    expect(store.getById(s.upload_id)?.campfire).toBeUndefined();
+  });
+
+  test.each([
+    { project_id: 42 },
+    { campfire_id: 5 },
+  ])('handleCreateUploadUrl rejects a half campfire target %o', async (half) => {
+    const result = await handleCreateUploadUrl(
+      { filename: 'a.png', ...half, response_format: ResponseFormat.JSON },
+      makeCtx(),
+      store,
+      'https://mcp.example.com',
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/project_id and campfire_id together/);
+    expect(store.size()).toBe(0);
+  });
+
   // ─── basecamp_create_vault_upload ─────────────────────────────────────
 
   test('handleCreateVaultUpload posts attachable_sgid to the vault and marks the id used', async () => {
@@ -174,122 +206,6 @@ describe('upload-tools', () => {
 
   // ─── attachments on posting tools ─────────────────────────────────────
 
-  test('campfire: attachments are appended as bc-attachment and ids marked used', async () => {
-    const a = uploaded(store, 'SGID-A');
-    const b = uploaded(store, 'SGID-B');
-    fetchMock.mockResolvedValueOnce(makeResponse(CHAT_LINE, 201));
-    const result = await handlePostCampfireMessage(
-      {
-        project_id: 42,
-        campfire_id: 5,
-        content: 'Here you go',
-        attachments: [a.id, b.id],
-        response_format: ResponseFormat.JSON,
-      },
-      makeCtx(),
-      store,
-    );
-    expect(result.isError).toBeFalsy();
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://3.basecampapi.com/9999/buckets/42/chats/5/lines.json');
-    expect(JSON.parse(init.body as string)).toEqual({
-      content:
-        'Here you go<bc-attachment sgid="SGID-A"></bc-attachment><bc-attachment sgid="SGID-B"></bc-attachment>',
-      content_type: 'text/html',
-    });
-    expect(store.getById(a.id)?.state).toBe('used');
-    expect(store.getById(b.id)?.state).toBe('used');
-  });
-
-  test('campfire: attachments alone are enough (no content)', async () => {
-    const a = uploaded(store, 'SGID-A');
-    fetchMock.mockResolvedValueOnce(makeResponse(CHAT_LINE, 201));
-    const result = await handlePostCampfireMessage(
-      { project_id: 42, campfire_id: 5, attachments: [a.id], response_format: ResponseFormat.JSON },
-      makeCtx(),
-      store,
-    );
-    expect(result.isError).toBeFalsy();
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string).content).toBe(
-      '<bc-attachment sgid="SGID-A"></bc-attachment>',
-    );
-  });
-
-  test('campfire: neither content nor attachments is an error', async () => {
-    const result = await handlePostCampfireMessage(
-      { project_id: 42, campfire_id: 5, response_format: ResponseFormat.JSON },
-      makeCtx(),
-      store,
-    );
-    expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/content, attachments/);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test('campfire: without attachments the request is unchanged', async () => {
-    fetchMock.mockResolvedValueOnce(makeResponse(CHAT_LINE, 201));
-    await handlePostCampfireMessage(
-      { project_id: 42, campfire_id: 5, content: 'Standup in 5', response_format: ResponseFormat.JSON },
-      makeCtx(),
-      store,
-    );
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({
-      content: 'Standup in 5',
-      content_type: 'text/html',
-    });
-  });
-
-  test('campfire: a foreign-owner upload_id posts nothing', async () => {
-    const mine = uploaded(store, 'SGID-MINE');
-    const theirs = store.create({ identityId: 2, accountId: 9999, flowId: 'flow-2' }, 'b.png', 'image/png');
-    store.markUploaded(theirs, 'SGID-THEIRS', 10);
-    const result = await handlePostCampfireMessage(
-      {
-        project_id: 42,
-        campfire_id: 5,
-        content: 'hi',
-        attachments: [mine.id, theirs.id],
-        response_format: ResponseFormat.JSON,
-      },
-      makeCtx(),
-      store,
-    );
-    expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/Unknown upload_id/);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(store.getById(mine.id)?.state).toBe('uploaded');
-  });
-
-  test('campfire: a used upload_id is rejected on reuse', async () => {
-    const a = uploaded(store, 'SGID-A');
-    fetchMock.mockResolvedValue(makeResponse(CHAT_LINE, 201));
-    const params = {
-      project_id: 42,
-      campfire_id: 5,
-      attachments: [a.id],
-      response_format: ResponseFormat.JSON,
-    };
-    expect((await handlePostCampfireMessage(params, makeCtx(), store)).isError).toBeFalsy();
-    const again = await handlePostCampfireMessage(params, makeCtx(), store);
-    expect(again.isError).toBe(true);
-    expect(textOf(again)).toMatch(/already attached/);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  test('campfire: a failed post leaves the upload reusable', async () => {
-    const a = uploaded(store, 'SGID-A');
-    fetchMock.mockResolvedValueOnce(makeResponse({ error: 'nope' }, 422));
-    const result = await handlePostCampfireMessage(
-      { project_id: 42, campfire_id: 5, attachments: [a.id], response_format: ResponseFormat.JSON },
-      makeCtx(),
-      store,
-    );
-    expect(result.isError).toBe(true);
-    expect(store.getById(a.id)?.state).toBe('uploaded');
-  });
-
   test('message board: attachments appended to content and ids marked used', async () => {
     const a = uploaded(store, 'SGID-MSG');
     fetchMock
@@ -332,6 +248,39 @@ describe('upload-tools', () => {
       status: 'active',
     });
     expect(store.getById(a.id)?.state).toBe('used');
+  });
+
+  test.each([
+    ['active', { status: 'active' }],
+    ['draft', {}],
+  ] as const)('message board: status %s sends %o', async (status, expected) => {
+    fetchMock
+      .mockResolvedValueOnce(
+        makeResponse({
+          id: 42,
+          dock: [
+            {
+              name: 'message_board',
+              enabled: true,
+              url: 'https://3.basecampapi.com/9999/buckets/42/message_boards/3.json',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeResponse(
+          { id: 88, subject: 'Q3', app_url: 'https://3.basecamp.com/9999/buckets/42/messages/88' },
+          201,
+        ),
+      );
+    const result = await handlePostMessage(
+      { project_id: 42, subject: 'Q3', content: 'x', status, response_format: ResponseFormat.JSON },
+      makeCtx(),
+      store,
+    );
+    expect(result.isError).toBeFalsy();
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ subject: 'Q3', content: 'x', ...expected });
   });
 
   test('message board: unknown upload_id posts nothing (not even the project lookup)', async () => {

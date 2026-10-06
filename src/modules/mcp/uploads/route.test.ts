@@ -160,6 +160,78 @@ describe('PUT /uploads/:secret', () => {
     expect(stored?.byteSize).toBe(bytes.length);
   });
 
+  test('campfire target streams to chats/uploads.json and posts the line', async () => {
+    fetchMock.mockImplementationOnce(async (_url: unknown, init?: RequestInit) => {
+      received = await readStream(init?.body);
+      return new Response(
+        JSON.stringify({
+          id: 321,
+          type: 'Chat::Lines::Upload',
+          app_url: 'https://3.basecamp.com/9999/buckets/42/chats/5@321',
+          attachments: [],
+        }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    const t = store.create(OWNER, 'my chart.png', 'image/png', { projectId: 42, campfireId: 5 });
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01]);
+    const res = await put(port, `/uploads/${t.secret}`, { body: bytes });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      upload_id: t.id,
+      filename: 'my chart.png',
+      byte_size: bytes.length,
+      status: 'posted',
+      campfire_line_id: 321,
+      app_url: 'https://3.basecamp.com/9999/buckets/42/chats/5@321',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://3.basecampapi.com/9999/buckets/42/chats/5/uploads.json?name=my%20chart.png',
+    );
+    expect(init.method).toBe('POST');
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer bc-access-token');
+    expect(headers['User-Agent']).toMatch(/^BasecampMCP \(/);
+    expect(headers['Content-Type']).toBe('image/png');
+    expect(headers['Content-Length']).toBe(String(bytes.length));
+    expect(received).toEqual(bytes);
+
+    expect(store.getById(t.id)?.state).toBe('used');
+    expect(store.getById(t.id)?.sgid).toBeUndefined();
+    // Already posted: it can't be attached anywhere else.
+    expect(() => store.resolveForOwner([t.id], OWNER)).toThrow(/already attached/);
+    // And the URL is single-use.
+    expect((await put(port, `/uploads/${t.secret}`, { body: bytes })).status).toBe(409);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('campfire target: an unexpected Basecamp response fails the ticket', async () => {
+    fetchMock.mockImplementationOnce(async (_url: unknown, init?: RequestInit) => {
+      await readStream(init?.body);
+      return new Response(JSON.stringify({ nope: true }), { status: 201 });
+    });
+    const t = store.create(OWNER, 'a.png', 'image/png', { projectId: 42, campfireId: 5 });
+    const res = await put(port, `/uploads/${t.secret}`, { body: Buffer.from('x') });
+    expect(res.status).toBe(502);
+    expect(store.getById(t.id)?.state).toBe('failed');
+  });
+
+  test('campfire target: Basecamp 429 passes through and fails the ticket', async () => {
+    fetchMock.mockImplementationOnce(async (_url: unknown, init?: RequestInit) => {
+      await readStream(init?.body);
+      return new Response('slow down', { status: 429, headers: { 'Retry-After': '3' } });
+    });
+    const t = store.create(OWNER, 'a.png', 'image/png', { projectId: 42, campfireId: 5 });
+    const res = await put(port, `/uploads/${t.secret}`, { body: Buffer.from('x') });
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('3');
+    expect(store.getById(t.id)?.state).toBe('failed');
+  });
+
   test('raw body is intact even when the client claims application/json', async () => {
     const t = store.create(OWNER, 'data.json', 'application/json');
     const bytes = Buffer.from('{"a":1}');
