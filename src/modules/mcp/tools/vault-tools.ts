@@ -11,7 +11,7 @@ import { bcFetch, bcFetchOffsetLimit } from './basecamp-api.js';
 import { getBasecampCtx } from './auth-context.js';
 import type { BasecampContext } from './auth-context.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { buildResult, paginate, plainText, toolError } from './utils.js';
+import { buildResult, paginate, plainText, toolError, truncate } from './utils.js';
 
 const paginationSchema = {
   limit: z
@@ -285,7 +285,8 @@ export async function handleSearch(
       id: r.id,
       type: r.type,
       title: r.title,
-      content_excerpt: r.content_excerpt,
+      content_excerpt:
+        r.plain_text_content || truncate(plainText(r.content ?? ''), 300) || undefined,
       app_url: r.app_url,
       url: r.url,
       created_at: r.created_at,

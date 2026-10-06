@@ -413,7 +413,10 @@ export interface BasecampSearchResult {
   type: string; // "Document"|"Upload"|"CloudFile"|"GoogleDocument"|"Vault"|...
   status: string;
   title: string;
-  content_excerpt: string | null;
+  // Keyword-in-context excerpt. `content` is empty for chat-line hits;
+  // the searchable text comes back in `plain_text_content`.
+  plain_text_content?: string | null;
+  content?: string | null;
   url: string | null;   // external link for CloudFile/GoogleDocument
   app_url: string;
   created_at: string;

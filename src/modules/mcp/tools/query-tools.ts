@@ -7,6 +7,8 @@ import type {
   BasecampMessage,
   BasecampPerson,
   BasecampProject,
+  BasecampReading,
+  BasecampReadingsResponse,
   BasecampTodo,
   BasecampTodolist,
 } from '../../../lib/types.js';
@@ -30,6 +32,7 @@ import {
   paginate,
   plainText,
   toolError,
+  truncate,
 } from './utils.js';
 import {
   buildDashboard,
@@ -38,6 +41,51 @@ import {
 } from './dashboard.js';
 
 const MY_PLATE_RESOURCE_URI = 'ui://basecamp/my-plate';
+
+/**
+ * Pure handler for basecamp_my_notifications. Reads /my/readings.json — the
+ * account-wide notification inbox ("Hey!" menu). Exported so tests can call
+ * it without instantiating an McpServer.
+ */
+export async function handleMyNotifications(
+  params: { page: number; limit: number; response_format: ResponseFormat },
+  ctx: BasecampContext,
+): Promise<CallToolResult> {
+  try {
+    const readings = await bcFetch<BasecampReadingsResponse>(ctx, '/my/readings.json', {
+      params: { page: params.page },
+    });
+    const toItem = (r: BasecampReading, state: 'unread' | 'read') => ({
+      id: r.id,
+      state,
+      section: r.section,
+      title: r.title,
+      content_excerpt: r.content_excerpt || undefined,
+      creator: r.creator ? { id: r.creator.id, name: r.creator.name } : null,
+      bucket_name: r.bucket_name,
+      created_at: r.created_at,
+      read_at: r.read_at,
+      app_url: r.app_url,
+    });
+    const unreads = (readings.unreads ?? []).map((r) => toItem(r, 'unread'));
+    const reads = (readings.reads ?? []).slice(0, params.limit).map((r) => toItem(r, 'read'));
+    const struct = { unread_count: unreads.length, page: params.page, unreads, reads };
+    const fmtItem = (i: ReturnType<typeof toItem>) =>
+      `- [${i.state}] ${i.section} · ${i.created_at.substring(0, 16).replace('T', ' ')} · ` +
+      `${i.creator?.name ?? '?'} (${i.bucket_name}) — ${truncate(i.title, 120)}` +
+      (i.content_excerpt && i.content_excerpt !== i.title
+        ? `\n  > ${truncate(i.content_excerpt, 200)}`
+        : '');
+    const all = [...unreads, ...reads];
+    const markdown = all.length
+      ? `${unreads.length} unread notification${unreads.length === 1 ? '' : 's'}:\n\n` +
+        all.map(fmtItem).join('\n')
+      : 'No notifications.';
+    return buildResult(markdown, struct, params.response_format);
+  } catch (err) {
+    return toolError(err);
+  }
+}
 
 const paginationSchema = {
   limit: z
@@ -742,6 +790,17 @@ Returns:
   Paginated envelope: items: [{ id, content, creator: {id,name}, created_at, app_url }].
   Markdown format renders one line per message as "[HH:MM] Name: text".
 
+CRITICAL blind spot — quoted replies are invisible: the Basecamp UI lets people
+reply to a specific message with the original quoted above their answer, but the
+Basecamp API does NOT expose that reply link or the quoted text (verified against
+the raw API — no field carries it). A short line like "yes correct :)" may be a
+quoted reply to ANY earlier message, not the one directly above it in this list.
+Never assume adjacency = context. To attribute an ambiguous short line, call
+basecamp_my_notifications: a quoted reply generates an "@mentioned you: <text>"
+notification for the quoted author with a matching timestamp, which reveals who
+the line was aimed at. If it's still ambiguous, say so and ask the user to check
+the thread in the Basecamp UI rather than guessing.
+
 Examples:
   - Use when: "What's been said in the engineering campfire today?"`,
       inputSchema: z
@@ -791,6 +850,69 @@ Examples:
       } catch (err) {
         return toolError(err);
       }
+    },
+  );
+
+  // ─── basecamp_my_notifications ──────────────────────────────────────
+  server.registerTool(
+    'basecamp_my_notifications',
+    {
+      title: 'My Basecamp notifications (Hey! feed)',
+      description: `Read the current user's Basecamp notification inbox — unread and recently-read notifications across all projects: @mentions, chat activity, pings, and message/comment activity.
+
+Args:
+  - page (number, default 1) — pagination for read items (Basecamp serves 50/page).
+  - limit (number, default 20) — max read items returned after the unreads.
+  - response_format ('markdown'|'json').
+
+Returns:
+  { unread_count, page, unreads: [...], reads: [...] } — each item:
+  { id, state ('unread'|'read'), section ('inbox'|'chats'|'pings'|'mentions'|'remembered'),
+    title, content_excerpt, creator: {id,name}, bucket_name, created_at, read_at, app_url }.
+
+KEY use — decoding quoted replies in campfires: when someone uses the Basecamp
+UI's reply-with-quote on a message, the chat-line API shows only the reply text
+with no link to what was quoted — but the quoted author receives a notification
+here titled "@mentioned you: <reply text>" with a matching timestamp. So an
+ambiguous short campfire line like "yes correct :)" can be attributed: if this
+feed has "@mentioned you: yes correct :)" for the current user at that moment,
+the reply was directed at them.
+
+Examples:
+  - Use when: "What am I mentioned in?" / "What did I miss?"
+  - Use when: a short campfire reply is ambiguous — check who it was aimed at.`,
+      inputSchema: z
+        .object({
+          page: z.number().int().min(1).default(1).describe('Page of read items (50/page).'),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_PAGE_LIMIT)
+            .default(DEFAULT_PAGE_LIMIT)
+            .describe('Max read items to return.'),
+          response_format: z
+            .nativeEnum(ResponseFormat)
+            .default(ResponseFormat.MARKDOWN)
+            .describe('"markdown" for human-readable, "json" for programmatic.'),
+        })
+        .strict().shape,
+      outputSchema: {
+        unread_count: z.number(),
+        page: z.number(),
+        unreads: z.array(z.record(z.string(), z.unknown())),
+        reads: z.array(z.record(z.string(), z.unknown())),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params, extra) => {
+      const ctx = getBasecampCtx(extra.authInfo?.extra);
+      return handleMyNotifications(params, ctx);
     },
   );
 
