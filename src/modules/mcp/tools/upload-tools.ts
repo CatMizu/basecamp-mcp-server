@@ -71,17 +71,33 @@ export function attachmentHtml(tickets: UploadTicket[]): string {
 // ─── Exported handlers (testable without McpServer) ────────────────────────
 
 export async function handleCreateUploadUrl(
-  params: { filename: string; content_type?: string; response_format: ResponseFormat },
+  params: {
+    filename: string;
+    content_type?: string;
+    project_id?: number;
+    campfire_id?: number;
+    response_format: ResponseFormat;
+  },
   ctx: BasecampContext,
   store: UploadStore = uploadStore,
   baseUri: string = config.baseUri,
 ): Promise<CallToolResult> {
   try {
+    if ((params.project_id === undefined) !== (params.campfire_id === undefined)) {
+      throw new Error(
+        'Pass project_id and campfire_id together (to post the file into a campfire), or neither.',
+      );
+    }
+    const campfire =
+      params.project_id !== undefined && params.campfire_id !== undefined
+        ? { projectId: params.project_id, campfireId: params.campfire_id }
+        : undefined;
     const contentType = params.content_type ?? inferContentType(params.filename);
     const ticket = store.create(
       { identityId: ctx.identityId, accountId: ctx.accountId, flowId: ctx.flowId },
       params.filename,
       contentType,
+      campfire,
     );
     const uploadUrl = `${baseUri.replace(/\/$/, '')}/uploads/${ticket.secret}`;
     const curlCommand = `curl -sS --fail-with-body -X PUT -H "Content-Type: ${contentType}" --data-binary @"<LOCAL_FILE_PATH>" "${uploadUrl}"`;
@@ -99,7 +115,9 @@ export async function handleCreateUploadUrl(
       '',
       curlCommand,
       '',
-      `Then pass "${ticket.id}" in \`attachments\` of basecamp_post_campfire_message / basecamp_post_message, or as upload_id of basecamp_create_vault_upload.`,
+      campfire
+        ? `The file is posted into campfire #${campfire.campfireId} as soon as curl finishes (status "posted"). If it needs accompanying text, post that with basecamp_post_campfire_message BEFORE running curl, so the text appears above the file.`
+        : `Then pass "${ticket.id}" in \`attachments\` of basecamp_post_message, or as upload_id of basecamp_create_vault_upload.`,
     ].join('\n');
     return buildResult(markdown, struct, params.response_format);
   } catch (err) {
@@ -155,13 +173,16 @@ export function registerUploadTools(server: McpServer): void {
       description: `Start sending a local file (image, PDF, anything) to Basecamp. This server cannot read your disk, so it returns a one-time upload URL and a ready curl command.
 
 Steps:
-  1. Call this tool with the file's name.
-  2. In your shell, replace <LOCAL_FILE_PATH> in curl_command with the file's absolute path (e.g. /Users/me/Desktop/chart.png; no ~, it is not expanded inside the quotes) and run it. The response JSON confirms status "uploaded".
-  3. Pass upload_id in the \`attachments\` param of basecamp_post_campfire_message or basecamp_post_message, or as upload_id of basecamp_create_vault_upload (Docs & Files).
+  1. Call this tool with the file's name. To send the file into a campfire chat, also pass project_id + campfire_id; if the file needs accompanying text, first post the text with basecamp_post_campfire_message (the file is posted the moment curl finishes, so text sent afterwards lands below it).
+  2. In your shell, replace <LOCAL_FILE_PATH> in curl_command with the file's absolute path (e.g. /Users/me/Desktop/chart.png; no ~, it is not expanded inside the quotes) and run it.
+  3. Campfire target: the file appears in the chat as soon as curl finishes (response status "posted"); nothing else to do.
+     No target: the response confirms status "uploaded"; pass upload_id in the \`attachments\` param of basecamp_post_message, or as upload_id of basecamp_create_vault_upload (Docs & Files).
 
 Args:
   - filename (string, required) — base name shown in Basecamp, e.g. "chart.png" (no directories).
   - content_type (string, optional) — MIME type; inferred from the extension when omitted.
+  - project_id (number, optional) — with campfire_id: post the file straight into that campfire.
+  - campfire_id (number, optional) — from basecamp_list_campfires. Pass both or neither.
   - response_format ('markdown'|'json').
 
 Returns:
@@ -183,6 +204,18 @@ Error handling:
             .regex(/^[\w.+-]+\/[\w.+-]+$/, 'Use a MIME type like "image/png"')
             .optional()
             .describe('MIME type. Inferred from the extension when omitted.'),
+          project_id: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('With campfire_id: post the file straight into that campfire.'),
+          campfire_id: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Campfire to post the file into (from basecamp_list_campfires). Pass with project_id.'),
           ...responseFormatSchema,
         })
         .strict().shape,

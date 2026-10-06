@@ -21,12 +21,13 @@ export interface UploadRouterOptions {
 }
 
 const NEXT_STEP =
-  'Pass upload_id in the attachments param of basecamp_post_campfire_message / basecamp_post_message, or use basecamp_create_vault_upload.';
+  'Pass upload_id in the attachments param of basecamp_post_message, or use basecamp_create_vault_upload.';
 
 /**
  * PUT /uploads/:secret — no bearer auth; the 256-bit secret in the path is a
  * one-time capability issued by basecamp_create_upload_url. The body is
- * streamed straight to Basecamp's attachments endpoint, never buffered.
+ * streamed straight to Basecamp, never buffered: to the ticket's campfire
+ * (chats/:id/uploads.json) when it has one, else to /attachments.json.
  *
  * Must be mounted BEFORE express.json()/urlencoded() so a client sending
  * `Content-Type: application/json` can't get the raw stream consumed.
@@ -78,8 +79,45 @@ export function createUploadRouter(opts: UploadRouterOptions = {}): Router {
     store.markUploading(ticket);
 
     try {
-      const sgid = await forwardToBasecamp(ticket, byteSize, req, getAccessToken);
-      store.markUploaded(ticket, sgid, byteSize);
+      const base = `${API_BASE_URL_PREFIX}/${ticket.owner.accountId}`;
+      const name = encodeURIComponent(ticket.filename);
+      if (ticket.campfire) {
+        const { projectId, campfireId } = ticket.campfire;
+        const line = (await forwardToBasecamp(
+          ticket,
+          byteSize,
+          req,
+          getAccessToken,
+          `${base}/buckets/${projectId}/chats/${campfireId}/uploads.json?name=${name}`,
+        )) as { id?: unknown; app_url?: unknown };
+        if (typeof line.id !== 'number' || typeof line.app_url !== 'string') {
+          throw new UploadForwardError(502, 'Basecamp returned an unexpected response.');
+        }
+        // Already posted — it can't be attached anywhere else.
+        store.markUsed([ticket.id]);
+        logger.info('Upload posted to campfire', { uploadId: ticket.id, byteSize });
+        res.status(200).json({
+          upload_id: ticket.id,
+          filename: ticket.filename,
+          byte_size: byteSize,
+          status: 'posted',
+          campfire_line_id: line.id,
+          app_url: line.app_url,
+        });
+        return;
+      }
+
+      const body = (await forwardToBasecamp(
+        ticket,
+        byteSize,
+        req,
+        getAccessToken,
+        `${base}/attachments.json?name=${name}`,
+      )) as { attachable_sgid?: unknown };
+      if (!isValidSgid(body.attachable_sgid)) {
+        throw new UploadForwardError(502, 'Basecamp returned an unexpected response.');
+      }
+      store.markUploaded(ticket, body.attachable_sgid, byteSize);
       logger.info('Upload forwarded to Basecamp', { uploadId: ticket.id, byteSize });
       res.status(200).json({
         upload_id: ticket.id,
@@ -129,7 +167,8 @@ async function forwardToBasecamp(
   byteSize: number,
   req: Request,
   getAccessToken: (flowId: string) => Promise<string>,
-): Promise<string> {
+  url: string,
+): Promise<unknown> {
   let token: string;
   try {
     token = await getAccessToken(ticket.owner.flowId);
@@ -140,8 +179,7 @@ async function forwardToBasecamp(
     throw err;
   }
 
-  // The token only ever goes to 3.basecampapi.com.
-  const url = `${API_BASE_URL_PREFIX}/${ticket.owner.accountId}/attachments.json?name=${encodeURIComponent(ticket.filename)}`;
+  // The token only ever goes to 3.basecampapi.com (callers build url from API_BASE_URL_PREFIX).
   const upstream = await fetch(url, {
     method: 'POST',
     headers: {
@@ -170,9 +208,5 @@ async function forwardToBasecamp(
     throw new UploadForwardError(502, `Basecamp returned ${upstream.status}.`);
   }
 
-  const body = (await upstream.json()) as { attachable_sgid?: unknown };
-  if (!isValidSgid(body.attachable_sgid)) {
-    throw new UploadForwardError(502, 'Basecamp returned an unexpected response.');
-  }
-  return body.attachable_sgid;
+  return upstream.json();
 }

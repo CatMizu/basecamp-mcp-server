@@ -100,12 +100,20 @@ text, "Re:" is email style.
 This server cannot read the user's disk. To send a local file
 (screenshot, PDF, anything up to 25 MB) when you have a shell:
 
-1. Call \`basecamp_create_upload_url\` with the file name.
+1. Call \`basecamp_create_upload_url\` with the file name. To send the
+   file into a **campfire**, also pass \`project_id\` + \`campfire_id\`
+   (campfire chat lines cannot carry attachments). If the file needs
+   accompanying text, post the text first with
+   \`basecamp_post_campfire_message\`: the file is posted the moment
+   curl finishes, so text sent afterwards lands below it.
 2. Replace \`<LOCAL_FILE_PATH>\` in the returned \`curl_command\` with
    the file's absolute path (no \`~\`; it is not expanded inside quotes)
    and run it. The URL works once and expires after 10 minutes.
-3. Pass the \`upload_id\` in \`attachments\` of
-   \`basecamp_post_campfire_message\` / \`basecamp_post_message\`, or to
-   \`basecamp_create_vault_upload\` to file it in Docs & Files. Each
-   upload_id works once, within 60 minutes.
+3. Where it goes:
+   - **Campfire:** the file appears in the chat as soon as curl finishes
+     (status "posted"); nothing else to do.
+   - **Message board:** pass the \`upload_id\` in \`attachments\` of
+     \`basecamp_post_message\`.
+   - **Docs & Files:** pass it to \`basecamp_create_vault_upload\`.
+   Each upload_id works once, within 60 minutes.
 `;

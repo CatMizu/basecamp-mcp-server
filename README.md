@@ -40,7 +40,7 @@ Claude will prompt automatically when a tool call fails with "reconnect" in the 
 
 **Write** — create a todo, mark a todo complete, post a message to a project's message board, post a campfire chat message.
 
-**Send files** — `basecamp_create_upload_url` returns a one-time upload URL + curl command; a client with a shell (e.g. Claude Code) PUTs a local file there (max 25 MB), then attaches it with the `attachments` param of `basecamp_post_campfire_message` / `basecamp_post_message`, or files it in Docs & Files with `basecamp_create_vault_upload`. Upload tickets live in memory: a server restart drops pending uploads, and the client just requests a new URL.
+**Send files** — `basecamp_create_upload_url` returns a one-time upload URL + curl command; a client with a shell (e.g. Claude Code) PUTs a local file there (max 25 MB), then: for a campfire, pass `project_id` + `campfire_id` when creating the URL and the file is posted into the chat as soon as the upload finishes (chat lines can't carry attachments); for the message board, attach it with the `attachments` param of `basecamp_post_message`; for Docs & Files, file it with `basecamp_create_vault_upload`. Upload tickets live in memory: a server restart drops pending uploads, and the client just requests a new URL.
 
 **Interactive** — `basecamp_my_plate` renders a read-only Basecamp dashboard as an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) (sandboxed iframe UI): KPI cards, today's todos, unread breakdown, projects, 7-day upcoming load, waiting-on-you list. See [MCP App: `basecamp_my_plate`](#mcp-app-basecamp_my_plate).
 
