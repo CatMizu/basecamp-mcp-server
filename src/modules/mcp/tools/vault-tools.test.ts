@@ -324,6 +324,74 @@ describe('vault-tools', () => {
     expect(url).not.toContain('bucket=');
   });
 
+  test('handleSearch surfaces the excerpt from plain_text_content', async () => {
+    // Real /search.json shape for a campfire-line hit: `content` is empty,
+    // the keyword-in-context excerpt lives in `plain_text_content`.
+    fetchMock.mockResolvedValueOnce(
+      makeResponse({
+        body: [
+          {
+            id: 10103990529,
+            type: 'Chat::Lines::RichText',
+            status: 'active',
+            title: "Esther — ahead of Monday's quote email to James, three things to align on; all of them affect how th",
+            content: '',
+            plain_text_content:
+              '…cope and quote that as a separate project — not part of this pilot. • Ownership: as a Sol product feature, the code and product stay with us',
+            url: 'https://3.basecampapi.com/9999/buckets/1/chats/2/lines/10103990529.json',
+            app_url: 'https://app.basecamp.com/9999/buckets/1/chats/2@10103990529',
+            created_at: '2026-07-16T21:25:52.940Z',
+            updated_at: '2026-07-16T21:25:52.940Z',
+            creator: { id: 51897567, name: 'Jianhao Tian' },
+            parent: { id: 2, title: 'Chat', type: 'Chat::Transcript' },
+            bucket: { id: 1, name: 'YourPitch MVP', type: 'Project' },
+          },
+        ],
+      }),
+    );
+    const result = await handleSearch(
+      { query: 'quote', limit: 20, page: 1, response_format: ResponseFormat.JSON },
+      makeCtx(),
+    );
+    const struct = result.structuredContent as {
+      items: Array<{ content_excerpt?: string }>;
+    };
+    expect(struct.items[0].content_excerpt).toContain('quote that as a separate project');
+    const text = (result.content[0] as { type: string; text: string }).text;
+    expect(text).toContain('quote that as a separate project');
+  });
+
+  test('handleSearch falls back to stripped content when plain_text_content is absent', async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse({
+        body: [
+          {
+            id: 7,
+            type: 'Document',
+            status: 'active',
+            title: 'Pricing notes',
+            content: '<div>The quote is <strong>5.5–6h</strong> billed.</div>',
+            url: 'https://3.basecampapi.com/9999/buckets/1/vaults/3/documents/7.json',
+            app_url: 'https://app.basecamp.com/9999/buckets/1/documents/7',
+            created_at: '2026-07-16T21:25:52.940Z',
+            updated_at: '2026-07-16T21:25:52.940Z',
+            creator: { id: 1, name: 'A' },
+            parent: { id: 3, title: 'Docs', type: 'Vault' },
+            bucket: { id: 1, name: 'YourPitch MVP', type: 'Project' },
+          },
+        ],
+      }),
+    );
+    const result = await handleSearch(
+      { query: 'quote', limit: 20, page: 1, response_format: ResponseFormat.JSON },
+      makeCtx(),
+    );
+    const struct = result.structuredContent as {
+      items: Array<{ content_excerpt?: string }>;
+    };
+    expect(struct.items[0].content_excerpt).toBe('The quote is 5.5–6h billed.');
+  });
+
   test('handleSearch returns error result on 404', async () => {
     fetchMock.mockResolvedValueOnce(makeResponse({ status: 404 }));
     const result = await handleSearch(
