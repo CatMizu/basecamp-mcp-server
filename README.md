@@ -40,9 +40,11 @@ Claude will prompt automatically when a tool call fails with "reconnect" in the 
 
 **Write** — create a todo, mark a todo complete, post a message to a project's message board, post a campfire chat message.
 
+**Send files** — `basecamp_create_upload_url` returns a one-time upload URL + curl command; a client with a shell (e.g. Claude Code) PUTs a local file there (max 25 MB), then attaches it with the `attachments` param of `basecamp_post_campfire_message` / `basecamp_post_message`, or files it in Docs & Files with `basecamp_create_vault_upload`. Upload tickets live in memory: a server restart drops pending uploads, and the client just requests a new URL.
+
 **Interactive** — `basecamp_my_plate` renders a read-only Basecamp dashboard as an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview) (sandboxed iframe UI): KPI cards, today's todos, unread breakdown, projects, 7-day upcoming load, waiting-on-you list. See [MCP App: `basecamp_my_plate`](#mcp-app-basecamp_my_plate).
 
-15 tools in total, prefixed `basecamp_`. Responses are capped at 25,000 characters; list tools paginate (`limit` / `offset`).
+31 tools in total, prefixed `basecamp_`. Responses are capped at 25,000 characters; list tools paginate (`limit` / `offset`).
 
 ---
 
@@ -173,7 +175,7 @@ src/
 │       ├── index.ts              — bearer auth + shttp mount
 │       ├── services/mcp.ts       — McpServer factory
 │       ├── handlers/shttp.ts     — stateless StreamableHTTP handler
-│       └── tools/                — 14 tools + shared fetch wrapper
+│       └── tools/                — 31 tools + shared fetch wrapper
 └── static/styles.css             — splash + picker styles
 ```
 
@@ -202,7 +204,7 @@ curl -s -X POST http://localhost:3232/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}'
 ```
 
-`tools/list` on the same endpoint should return all 14 tools with their
+`tools/list` on the same endpoint should return all 31 tools with their
 schemas.
 
 ### Evaluations

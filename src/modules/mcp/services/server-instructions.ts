@@ -92,4 +92,20 @@ Jianhao
 
 Problems: Markdown bold won't render, fake @mention shows as plain
 text, "Re:" is email style.
+
+---
+
+## 3. Sending Files
+
+This server cannot read the user's disk. To send a local file
+(screenshot, PDF, anything up to 25 MB) when you have a shell:
+
+1. Call \`basecamp_create_upload_url\` with the file name.
+2. Replace \`<LOCAL_FILE_PATH>\` in the returned \`curl_command\` with
+   the file's absolute path (no \`~\`; it is not expanded inside quotes)
+   and run it. The URL works once and expires after 10 minutes.
+3. Pass the \`upload_id\` in \`attachments\` of
+   \`basecamp_post_campfire_message\` / \`basecamp_post_message\`, or to
+   \`basecamp_create_vault_upload\` to file it in Docs & Files. Each
+   upload_id works once, within 60 minutes.
 `;

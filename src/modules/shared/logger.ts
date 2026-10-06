@@ -59,7 +59,9 @@ class StructuredLogger {
     context.requestId = req.header('X-Request-Id');
     context.userAgent = req.header('User-Agent');
     context.method = req.method;
-    context.path = req.path;
+    // The upload URL secret is a bearer capability — never log it. Case-
+    // insensitive because Express routing is (/Uploads/<secret> still matches).
+    context.path = req.path.replace(/^\/uploads\/[^/]+/i, '/uploads/[redacted]');
 
     return context;
   }

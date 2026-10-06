@@ -9,6 +9,10 @@ import type {
 } from '../../../lib/types.js';
 import { bcFetch } from './basecamp-api.js';
 import { getBasecampCtx } from './auth-context.js';
+import type { BasecampContext } from './auth-context.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { uploadStore, UploadStore } from '../uploads/store.js';
+import { attachmentHtml, resolveAttachments } from './upload-tools.js';
 import {
   buildResult,
   findDock,
@@ -21,6 +25,112 @@ const formatParam = {
     .default(ResponseFormat.MARKDOWN)
     .describe('"markdown" for human-readable, "json" for programmatic.'),
 };
+
+const attachmentsParam = {
+  attachments: z
+    .array(z.string())
+    .min(1)
+    .max(10)
+    .optional()
+    .describe('upload_ids from basecamp_create_upload_url (after the curl upload succeeded).'),
+};
+
+// ─── Exported handlers (testable without McpServer) ────────────────────────
+
+export async function handlePostMessage(
+  params: {
+    project_id: number;
+    subject: string;
+    content: string;
+    status: 'active' | 'draft';
+    attachments?: string[];
+    response_format: ResponseFormat;
+  },
+  ctx: BasecampContext,
+  store: UploadStore = uploadStore,
+): Promise<CallToolResult> {
+  try {
+    // Resolve before any Basecamp call so a bad upload_id posts nothing.
+    const uploads = params.attachments
+      ? resolveAttachments(params.attachments, ctx, store)
+      : [];
+    const project = await bcFetch<BasecampProject>(
+      ctx,
+      `/projects/${params.project_id}.json`,
+    );
+    const board = findDock(project, 'message_board');
+    if (!board?.enabled || !board.url) {
+      return toolError(
+        new Error(`Project ${params.project_id} has no enabled message board.`),
+      );
+    }
+    const postUrl = board.url.replace(/\.json$/, '/messages.json');
+    const m = await bcFetch<BasecampMessage>(ctx, postUrl, {
+      method: 'POST',
+      body: {
+        subject: params.subject,
+        content: params.content + attachmentHtml(uploads),
+        status: params.status,
+      },
+    });
+    store.markUsed(uploads.map((u) => u.id));
+    const struct = { id: m.id, subject: m.subject, app_url: m.app_url };
+    return buildResult(
+      `Posted message #${m.id}: **${m.subject}**\n${m.app_url}`,
+      struct,
+      params.response_format,
+    );
+  } catch (err) {
+    return toolError(err);
+  }
+}
+
+export async function handlePostCampfireMessage(
+  params: {
+    project_id: number;
+    campfire_id: number;
+    content?: string;
+    attachments?: string[];
+    response_format: ResponseFormat;
+  },
+  ctx: BasecampContext,
+  store: UploadStore = uploadStore,
+): Promise<CallToolResult> {
+  try {
+    if (!params.content && !params.attachments?.length) {
+      return toolError(new Error('Provide content, attachments, or both.'));
+    }
+    // Resolve before any Basecamp call so a bad upload_id posts nothing.
+    const uploads = params.attachments
+      ? resolveAttachments(params.attachments, ctx, store)
+      : [];
+    const line = await bcFetch<BasecampChatLine>(
+      ctx,
+      `/buckets/${params.project_id}/chats/${params.campfire_id}/lines.json`,
+      {
+        method: 'POST',
+        body: {
+          content: (params.content ?? '') + attachmentHtml(uploads),
+          content_type: 'text/html', // load-bearing — see SKILL docs
+        },
+      },
+    );
+    store.markUsed(uploads.map((u) => u.id));
+    const struct = {
+      id: line.id,
+      content: line.content,
+      created_at: line.created_at,
+      app_url: line.app_url,
+    };
+    return buildResult(
+      `Sent campfire line #${line.id}.\n${line.app_url}`,
+      struct,
+      params.response_format,
+    );
+  } catch (err) {
+    return toolError(err);
+  }
+}
 
 export function registerActionTools(server: McpServer): void {
   // ─── basecamp_create_todo ───────────────────────────────────────────
@@ -184,6 +294,7 @@ Args:
   - subject (string, required).
   - content (string, required) — HTML body.
   - status ('active' | 'draft', default 'active').
+  - attachments (array<string>, optional, 1-10) — upload_ids from basecamp_create_upload_url; each file is appended to the body. One-time use.
   - response_format ('markdown'|'json').
 
 Returns:
@@ -198,6 +309,7 @@ Examples:
           subject: z.string().min(1).max(500),
           content: z.string().min(1),
           status: z.enum(['active', 'draft']).default('active'),
+          ...attachmentsParam,
           ...formatParam,
         })
         .strict().shape,
@@ -216,31 +328,7 @@ Examples:
     async (params, extra) => {
       try {
         const ctx = getBasecampCtx(extra.authInfo?.extra);
-        const project = await bcFetch<BasecampProject>(
-          ctx,
-          `/projects/${params.project_id}.json`,
-        );
-        const board = findDock(project, 'message_board');
-        if (!board?.enabled || !board.url) {
-          return toolError(
-            new Error(`Project ${params.project_id} has no enabled message board.`),
-          );
-        }
-        const postUrl = board.url.replace(/\.json$/, '/messages.json');
-        const m = await bcFetch<BasecampMessage>(ctx, postUrl, {
-          method: 'POST',
-          body: {
-            subject: params.subject,
-            content: params.content,
-            status: params.status,
-          },
-        });
-        const struct = { id: m.id, subject: m.subject, app_url: m.app_url };
-        return buildResult(
-          `Posted message #${m.id}: **${m.subject}**\n${m.app_url}`,
-          struct,
-          params.response_format,
-        );
+        return handlePostMessage(params, ctx);
       } catch (err) {
         return toolError(err);
       }
@@ -266,7 +354,8 @@ correctly. Include HTML (\`<br>\`, \`<strong>\`, etc.) in content for formatting
 Args:
   - project_id (number, required).
   - campfire_id (number, required) — from basecamp_list_campfires.
-  - content (string, required) — HTML body.
+  - content (string, optional) — HTML body. Required unless attachments is given.
+  - attachments (array<string>, optional, 1-10) — upload_ids from basecamp_create_upload_url; each file is appended to the message. One-time use.
   - response_format ('markdown'|'json').
 
 Returns:
@@ -274,12 +363,14 @@ Returns:
 
 Examples:
   - Use when: "Post 'Standup in 5' to the engineering campfire."
+  - Use when: "Send this screenshot to the campfire" — upload it with basecamp_create_upload_url first, then pass attachments.
 `,
       inputSchema: z
         .object({
           project_id: z.number().int().positive(),
           campfire_id: z.number().int().positive(),
-          content: z.string().min(1),
+          content: z.string().min(1).optional(),
+          ...attachmentsParam,
           ...formatParam,
         })
         .strict().shape,
@@ -299,28 +390,7 @@ Examples:
     async (params, extra) => {
       try {
         const ctx = getBasecampCtx(extra.authInfo?.extra);
-        const line = await bcFetch<BasecampChatLine>(
-          ctx,
-          `/buckets/${params.project_id}/chats/${params.campfire_id}/lines.json`,
-          {
-            method: 'POST',
-            body: {
-              content: params.content,
-              content_type: 'text/html', // load-bearing — see SKILL docs
-            },
-          },
-        );
-        const struct = {
-          id: line.id,
-          content: line.content,
-          created_at: line.created_at,
-          app_url: line.app_url,
-        };
-        return buildResult(
-          `Sent campfire line #${line.id}.\n${line.app_url}`,
-          struct,
-          params.response_format,
-        );
+        return handlePostCampfireMessage(params, ctx);
       } catch (err) {
         return toolError(err);
       }
