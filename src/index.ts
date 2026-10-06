@@ -6,6 +6,7 @@ import { logger } from './modules/shared/logger.js';
 import { getDb } from './lib/db.js';
 import { AuthModule } from './modules/auth/index.js';
 import { MCPModule } from './modules/mcp/index.js';
+import { createUploadRouter } from './modules/mcp/uploads/route.js';
 
 async function main(): Promise<void> {
   // Initialize DB early so migrations run before any request arrives.
@@ -18,9 +19,12 @@ async function main(): Promise<void> {
   app.set('trust proxy', 1);
 
   app.use(cors({ origin: true, credentials: true }));
+  app.use(logger.middleware());
+  // File uploads stream the raw request body to Basecamp, so this router must
+  // run before the body parsers below can consume it.
+  app.use('/', createUploadRouter());
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
-  app.use(logger.middleware());
 
   // Auth (Authorization Server + Basecamp OAuth wrapper).
   const authModule = new AuthModule({ baseUri: config.baseUri });

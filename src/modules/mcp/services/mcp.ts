@@ -4,6 +4,7 @@ import { registerActionTools } from '../tools/action-tools.js';
 import { registerUiResources } from '../tools/resources.js';
 import { registerVaultTools } from '../tools/vault-tools.js';
 import { registerTicketTools } from '../tools/ticket-tools.js';
+import { registerUploadTools } from '../tools/upload-tools.js';
 import { SERVER_INSTRUCTIONS } from './server-instructions.js';
 
 export interface McpServerWrapper {
@@ -21,6 +22,7 @@ export function createMcpServer(): McpServerWrapper {
   registerActionTools(server);
   registerVaultTools(server);
   registerTicketTools(server);
+  registerUploadTools(server);
   registerUiResources(server);
 
   return { server, cleanup: () => {} };
